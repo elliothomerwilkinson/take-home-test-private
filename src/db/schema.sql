@@ -31,3 +31,14 @@ CREATE TABLE transformed_forms (
 	latitude double precision NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE transformed_notifications (
+	id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	transformed_form_id uuid NOT NULL UNIQUE REFERENCES transformed_forms (id),
+	status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+	attempts int NOT NULL DEFAULT 0,
+	error jsonb,
+	sent_at timestamptz,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	updated_at timestamptz NOT NULL DEFAULT now()
+);

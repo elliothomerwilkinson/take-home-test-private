@@ -23,6 +23,26 @@ type IngestedFormRow = {
 	attempts: number;
 };
 
+export type TransformedNotificationStatus = "pending" | "sent" | "failed";
+
+export type TransformedNotification = {
+	id: string;
+	transformedFormId: string;
+	status: TransformedNotificationStatus;
+	attempts: number;
+	error: unknown;
+	sentAt: Date | null;
+};
+
+type TransformedNotificationRow = {
+	id: string;
+	transformed_form_id: string;
+	status: TransformedNotificationStatus;
+	attempts: number;
+	error: unknown;
+	sent_at: Date | null;
+};
+
 type TransformedFormRow = {
 	session_id: string;
 	application_reference: string;
@@ -68,7 +88,15 @@ export const claimIngestedForm = async (
 	return rows[0]?.id;
 };
 
-export const saveTransformedForm = async (db: Db, ingestedFormId: string, form: TransformedFormSchema): Promise<string> =>
+/**
+ * Saves the Transformed Form, records its pending Transformed Notification and marks the Ingested Form transformed,
+ * in one transaction, so a transformed form always has exactly one notification owed.
+ */
+export const saveTransformedForm = async (
+	db: Db,
+	ingestedFormId: string,
+	form: TransformedFormSchema,
+): Promise<{ transformedFormId: string; notificationId: string }> =>
 	db.transaction(async (tx) => {
 		const { rows } = await tx.query<{ id: string }>(
 			`INSERT INTO transformed_forms (
@@ -97,10 +125,15 @@ export const saveTransformedForm = async (db: Db, ingestedFormId: string, form: 
 				form.latitude,
 			],
 		);
+		const transformedFormId = rows[0].id;
+		const notification = await tx.query<{ id: string }>(
+			`INSERT INTO transformed_notifications (transformed_form_id) VALUES ($1) RETURNING id`,
+			[transformedFormId],
+		);
 		await tx.query(`UPDATE ingested_forms SET status = 'transformed', error = NULL, updated_at = now() WHERE id = $1`, [
 			ingestedFormId,
 		]);
-		return rows[0].id;
+		return { transformedFormId, notificationId: notification.rows[0].id };
 	});
 
 export const findIngestedForm = async (db: Db, applicationReference: string): Promise<IngestedForm | undefined> => {
@@ -146,6 +179,27 @@ export const findTransformedForm = async (db: Db, id: string): Promise<Transform
 	);
 };
 
+export const findTransformedNotificationByFormId = async (
+	db: Db,
+	transformedFormId: string,
+): Promise<TransformedNotification | undefined> => {
+	const { rows } = await db.query<TransformedNotificationRow>(
+		`SELECT * FROM transformed_notifications WHERE transformed_form_id = $1`,
+		[transformedFormId],
+	);
+	const row = rows[0];
+	return (
+		row && {
+			id: row.id,
+			transformedFormId: row.transformed_form_id,
+			status: row.status,
+			attempts: row.attempts,
+			error: row.error,
+			sentAt: row.sent_at,
+		}
+	);
+};
+
 export const countForms = async (db: Db): Promise<{ ingested: number; transformed: number }> => {
 	const { rows } = await db.query<{ ingested: number; transformed: number }>(
 		`SELECT (SELECT count(*)::int FROM ingested_forms) AS ingested, (SELECT count(*)::int FROM transformed_forms) AS transformed`,
@@ -164,4 +218,9 @@ export const markIngestedForm = async (
 		status,
 		JSON.stringify(error),
 	]);
+};
+
+export const countTransformedNotifications = async (db: Db): Promise<number> => {
+	const { rows } = await db.query<{ count: number }>(`SELECT count(*)::int AS count FROM transformed_notifications`);
+	return rows[0].count;
 };

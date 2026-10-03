@@ -1,7 +1,14 @@
 import request from "supertest";
 import { createApp, Geocode } from "../src/app";
 import { createDb, Db } from "../src/db";
-import { claimIngestedForm, countForms, findIngestedForm, findTransformedForm } from "../src/db/forms_repository";
+import {
+	claimIngestedForm,
+	countForms,
+	countTransformedNotifications,
+	findIngestedForm,
+	findTransformedForm,
+	findTransformedNotificationByFormId,
+} from "../src/db/forms_repository";
 import personOne from "../src/forms/examples/person_one.json";
 import personTwo from "../src/forms/examples/person_two.json";
 import personThree from "../src/forms/examples/person_three.json";
@@ -150,6 +157,47 @@ describe("POST /ingest", () => {
 		expect(await findIngestedForm(db, "GRU-123089-2026")).toMatchObject({
 			status: "failed",
 			error: { message: expect.stringContaining("connection reset") },
+		});
+	});
+
+	describe("transformed notifications", () => {
+		it("records one pending notification for a transformed form", async () => {
+			const response = await ingest(personOne);
+
+			expect(response.status).toBe(201);
+			expect(await findTransformedNotificationByFormId(db, response.body.id)).toMatchObject({
+				transformedFormId: response.body.id,
+				status: "pending",
+				attempts: 0,
+				error: null,
+				sentAt: null,
+			});
+		});
+
+		it.each([
+			["fails validation", { ...personOne, email: "john.doe" }, succeedingGeocode],
+			["fails geocoding", personOne, failingGeocode],
+		])("records no notification for a form that %s", async (_, body, geocode) => {
+			expect((await ingest(body, geocode)).status).toBeGreaterThanOrEqual(400);
+
+			expect(await countTransformedNotifications(db)).toBe(0);
+		});
+
+		it("records no second notification for a duplicate delivery", async () => {
+			expect((await ingest(personOne)).status).toBe(201);
+			expect((await ingest(personOne)).status).toBe(409);
+
+			expect(await countTransformedNotifications(db)).toBe(1);
+		});
+
+		it("records one notification when a resend of an invalid form is transformed", async () => {
+			expect((await ingest({ ...personOne, email: "john.doe" })).status).toBe(400);
+
+			const response = await ingest(personOne);
+
+			expect(response.status).toBe(201);
+			expect(await countTransformedNotifications(db)).toBe(1);
+			expect(await findTransformedNotificationByFormId(db, response.body.id)).toMatchObject({ status: "pending" });
 		});
 	});
 

@@ -23,3 +23,7 @@ Record that a Transformed Notification is owed in the same transaction as the Tr
 - [ ] A 201 ingest leaves exactly one `pending` notification row for the new Transformed Form. This is temporary: ticket 04 changes the expected status to `sent`.
 - [ ] Invalid, geocode-failed and duplicate ingests leave no notification row.
 - [ ] A resend after `invalid`/`failed` that then transforms creates exactly one notification.
+
+## Comments
+
+- Implemented. As agreed before starting, `findTransformedNotification`, `markTransformedNotificationSent` and `markTransformedNotificationFailed` moved to ticket 03, because nothing in this ticket uses them and ticket 03's delivery tests cover them. A `countTransformedNotifications` helper was added for the "no notification" tests. `findTransformedNotificationByFormId` returns `transformedFormId`, `status`, `attempts`, `error` and `sentAt`.

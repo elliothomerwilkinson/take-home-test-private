@@ -1,13 +1,12 @@
 import { Coordinates } from "./transform";
 import { lookupPostcode } from "../providers/idealpostcodes";
+import { retryWithBackoff } from "../retry";
 
 export type Geocode = typeof lookupPostcode;
 
 export type GeocodeResult = { ok: true; coords: Coordinates } | { ok: false; message: string };
 
 const MAX_ATTEMPTS = 3;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const attemptGeocode = async (geocode: Geocode, postcode: string): Promise<GeocodeResult> => {
 	try {
@@ -23,10 +22,6 @@ const attemptGeocode = async (geocode: Geocode, postcode: string): Promise<Geoco
 
 /** Geocodes a postcode, retrying with exponential backoff (retryDelayMs, then 2x, ...) up to MAX_ATTEMPTS. */
 export const geocodePostcode = async (geocode: Geocode, postcode: string, retryDelayMs: number): Promise<GeocodeResult> => {
-	let result = await attemptGeocode(geocode, postcode);
-	for (let attempt = 1; !result.ok && attempt < MAX_ATTEMPTS; attempt++) {
-		await sleep(retryDelayMs * 2 ** (attempt - 1));
-		result = await attemptGeocode(geocode, postcode);
-	}
+	const { result } = await retryWithBackoff(() => attemptGeocode(geocode, postcode), MAX_ATTEMPTS, retryDelayMs);
 	return result;
 };

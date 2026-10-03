@@ -58,9 +58,9 @@ export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200 }: AppDeps) =
 				return;
 			}
 
-			const id = await saveTransformedForm(db, ingestedFormId, transformForm(form, geocoded.coords));
+			const { transformedFormId } = await saveTransformedForm(db, ingestedFormId, transformForm(form, geocoded.coords));
 
-			res.status(201).json({ id });
+			res.status(201).json({ id: transformedFormId });
 		} catch (error) {
 			next(error);
 		}
