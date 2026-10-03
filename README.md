@@ -27,3 +27,22 @@ How to submit
 - The email sent to you has a unique submission link, which will take you to a submission portal
 - Please submit on the portal: a link to your repository and a link to a 5 minute (max) loom which explains your code and some of your design decisions
 - If possible, please submit within 4-5 days of receiving the task
+
+## Running
+
+```bash
+npm install
+npm test          # unit + integration tests (in-memory PGlite, stubbed geocoder)
+npm run dev       # dev server on :3000
+npm run build && npm start
+```
+
+## Design
+
+- [`CONTEXT.md`](CONTEXT.md): domain terms, rules, lossy mappings and known limitations
+- [`docs/adr/`](docs/adr): database choice, why raw forms are stored separately, and the deduplication key
+- `POST /ingest` responses:
+  - `201 { id }` when the form is transformed
+  - `400` for invalid JSON, a missing `application_reference`, or a form that fails validation (it is stored as `invalid`)
+  - `409` for a duplicate or a form still being processed
+  - `503` when geocoding fails after 3 attempts (the form is stored as `failed`, and resending it reprocesses it)
