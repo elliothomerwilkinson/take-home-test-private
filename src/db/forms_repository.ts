@@ -220,6 +220,50 @@ export const markIngestedForm = async (
 	]);
 };
 
+export const findTransformedNotification = async (
+	db: Db,
+	id: string,
+): Promise<(TransformedNotification & { applicationReference: string; transformedAt: Date }) | undefined> => {
+	const { rows } = await db.query<TransformedNotificationRow & { application_reference: string; transformed_at: Date }>(
+		`SELECT n.*, f.application_reference, f.created_at AS transformed_at
+		 FROM transformed_notifications n JOIN transformed_forms f ON f.id = n.transformed_form_id
+		 WHERE n.id = $1`,
+		[id],
+	);
+	const row = rows[0];
+	return (
+		row && {
+			id: row.id,
+			transformedFormId: row.transformed_form_id,
+			status: row.status,
+			attempts: row.attempts,
+			error: row.error,
+			sentAt: row.sent_at,
+			applicationReference: row.application_reference,
+			transformedAt: row.transformed_at,
+		}
+	);
+};
+
+export const markTransformedNotificationSent = async (db: Db, id: string, attempts: number): Promise<void> => {
+	await db.query(
+		`UPDATE transformed_notifications SET status = 'sent', attempts = $2, error = NULL, sent_at = now(), updated_at = now() WHERE id = $1`,
+		[id, attempts],
+	);
+};
+
+export const markTransformedNotificationFailed = async (
+	db: Db,
+	id: string,
+	attempts: number,
+	error: unknown,
+): Promise<void> => {
+	await db.query(
+		`UPDATE transformed_notifications SET status = 'failed', attempts = $2, error = $3, updated_at = now() WHERE id = $1`,
+		[id, attempts, JSON.stringify(error)],
+	);
+};
+
 export const countTransformedNotifications = async (db: Db): Promise<number> => {
 	const { rows } = await db.query<{ count: number }>(`SELECT count(*)::int AS count FROM transformed_notifications`);
 	return rows[0].count;

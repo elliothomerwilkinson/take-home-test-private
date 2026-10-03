@@ -23,3 +23,7 @@ A module that builds the email, sends it with retries, and records the outcome. 
 - [ ] Failing twice then succeeding → `sent`, `attempts = 3`.
 - [ ] Always returning 500 → `failed`, `attempts = 3`, error message stored.
 - [ ] A throwing `sendEmail` is handled the same as a 500.
+
+## Comments
+
+- Implemented. As agreed before starting, the email builder is internal to `src/notifications/transformed_notification.ts` and isn't exported. The email content, including the no-PII check against `person_one.json`, is tested through `deliverTransformedNotification`, because a builder that only receives identifiers can't contain personal data whatever it does. The repository's `find`/`mark` functions are covered through the same seam. An unknown `notificationId` throws, and ticket 04's `.catch` will log it.
