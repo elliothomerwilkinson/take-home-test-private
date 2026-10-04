@@ -46,3 +46,22 @@ npm run build && npm start
   - `400` for invalid JSON, a missing `application_reference`, or a form that fails validation (it is stored as `invalid`)
   - `409` for a duplicate or a form still being processed
   - `503` when geocoding fails after 3 attempts (the form is stored as `failed`, and resending it reprocesses it)
+
+
+## Notes for Review / Design Choices
+
+#### application_reference as the unique key. 
+Without more details it is unclear what session_id and application_reference mean. I made the assumption that session_id refers to the users session whereas the application_reference refers to a unique application for a single patient. Therefore, I assumed session_id could be one to many with application_reference e.g. if a GP was completing 5 applications on behalf of their patients. 
+
+#### I did not implement /retry. 
+I was unclear on that being needed, or if we were just to build a system that can easily be extended to support that concept. I opted for the latter. Since we store the raw ingested request, ingestion statuses and errors we have all the data required to trigger retries. The complexity from retry comes from a lack of requirements, but an implementation would be easy for most options, for example:
+- Endpoint /:id/retry - enable retrying a single form
+- /retry - enable retrying all failed forms
+
+#### Emails are not gaurenteed without the /retry endpoint. 
+The mock email service fails 5% of the time, it performs 3 retries so we expect a failure rate of 1/8000. The /retry endpoint could capture retrying emails to solve this. 
+
+#### Other
+- A typicaly code architecture I would follow would be Controller -> Service -> Repository, with an optional extra service layer depending on system size. I have not added this here since we only have a single endpoint.
+- Typically I would use an ORM to manage the DB schemas, migrations and queries. I've kept it as raw SQL for now, but would make that change asap if this were a real application.
+- Other missing elements that would be essential to productionise this: authentication, openAPI spec, observability, auto scaling

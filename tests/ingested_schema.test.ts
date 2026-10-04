@@ -1,4 +1,4 @@
-import { ingestedFormSchema } from "../src/forms/schemas/ingested_schema";
+import { claimIdentitySchema, ingestedFormSchema } from "../src/forms/schemas/ingested_schema";
 import personOne from "../src/forms/examples/person_one.json";
 import personTwo from "../src/forms/examples/person_two.json";
 import personThree from "../src/forms/examples/person_three.json";
@@ -82,5 +82,37 @@ describe("ingestedFormSchema", () => {
 		});
 		expect(result).not.toHaveProperty("nhs_number");
 		expect(result.address).not.toHaveProperty("county");
+	});
+});
+
+describe("claimIdentitySchema", () => {
+	it("returns the trimmed application reference and session id", () => {
+		const result = claimIdentitySchema.parse({
+			...personOne,
+			application_reference: " GRU-123089-2026 ",
+			session_id: " c8267b77-d796-451e-9948-e82f56412b56 ",
+		});
+
+		expect(result).toEqual({
+			application_reference: "GRU-123089-2026",
+			session_id: "c8267b77-d796-451e-9948-e82f56412b56",
+		});
+	});
+
+	it.each([
+		["missing", (({ application_reference, ...rest }) => rest)(personOne)],
+		["blank", { ...personOne, application_reference: "   " }],
+		["not a string", { ...personOne, application_reference: 123 }],
+	])("rejects a body whose application_reference is %s", (_, body) => {
+		expect(claimIdentitySchema.safeParse(body).success).toBe(false);
+	});
+
+	it.each([
+		["missing", (({ session_id, ...rest }) => rest)(personOne)],
+		["null", { ...personOne, session_id: null }],
+		["blank", { ...personOne, session_id: "   " }],
+		["not a string", { ...personOne, session_id: 123 }],
+	])("treats a session_id that is %s as null", (_, body) => {
+		expect(claimIdentitySchema.parse(body).session_id).toBeNull();
 	});
 });

@@ -2,7 +2,7 @@ import { z } from "zod";
 import express, { NextFunction, Request, Response } from "express";
 import { Db } from "./db";
 import { claimIngestedForm, markIngestedForm, saveTransformedForm } from "./db/forms_repository";
-import { ingestedFormSchema } from "./forms/schemas/ingested_schema";
+import { claimIdentitySchema, ingestedFormSchema } from "./forms/schemas/ingested_schema";
 import { transformForm } from "./forms/transform";
 import { Geocode, geocodePostcode } from "./forms/geocode";
 import { deliverTransformedNotification, SendEmail } from "./notifications/transformed_notification";
@@ -17,12 +17,7 @@ export type AppDeps = {
 	emailRetryDelayMs?: number;
 };
 
-const readString = (body: unknown, key: string): string | undefined => {
-	const value = typeof body === "object" && body !== null ? (body as Record<string, unknown>)[key] : undefined;
-	return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-};
-
-export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200, sendEmail, emailRetryDelayMs = 200 }: AppDeps) => {
+export const createApp = ({ db, geocode, geocodeRetryDelayMs, sendEmail, emailRetryDelayMs }: AppDeps) => {
 	const app = express();
 
 	app.use(express.json());
@@ -30,19 +25,19 @@ export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200, sendEmail, e
 	app.post("/ingest", async (req: Request, res: Response, next: NextFunction) => {
 		try {
 			const body: unknown = req.body;
-			const applicationReference = readString(body, "application_reference");
-			if (!applicationReference) {
+			const identity = claimIdentitySchema.safeParse(body);
+			if (!identity.success) {
 				res.status(400).json({ error: "application_reference is required" });
 				return;
 			}
 
 			const ingestedFormId = await claimIngestedForm(db, {
-				applicationReference,
-				sessionId: readString(body, "session_id") ?? null,
+				applicationReference: identity.data.application_reference,
+				sessionId: identity.data.session_id,
 				rawBody: body,
 			});
 			if (!ingestedFormId) {
-				res.status(409).json({ error: `Form ${applicationReference} has already been received` });
+				res.status(409).json({ error: `Form ${identity.data.application_reference} has already been received` });
 				return;
 			}
 

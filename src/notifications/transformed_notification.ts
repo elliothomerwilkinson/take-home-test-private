@@ -12,6 +12,7 @@ export type SendEmail = typeof sendEmail;
 const MAX_ATTEMPTS = 3;
 const TEAM_ADDRESS = "happyforms@bots.com";
 const SENDER_ADDRESS = "formbot@healthtech1.com";
+const DEFAULT_EMAIL_RETRY_DELAY_MS = 200;
 
 type Notified = { applicationReference: string; transformedFormId: string; transformedAt: Date };
 
@@ -45,7 +46,7 @@ export const deliverTransformedNotification = async (
 	db: Db,
 	sendEmail: SendEmail,
 	notificationId: string,
-	retryDelayMs: number,
+	retryDelayMs: number = DEFAULT_EMAIL_RETRY_DELAY_MS,
 ): Promise<void> => {
 	const notification = await findTransformedNotification(db, notificationId);
 	if (!notification) {

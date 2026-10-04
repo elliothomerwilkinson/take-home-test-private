@@ -10,6 +10,11 @@ const optionalString = trimmed
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+export const claimIdentitySchema = z.object({
+	application_reference: requiredString,
+	session_id: requiredString.nullable().catch(null),
+});
+
 export const ingestedFormSchema = z.object({
 	session_id: trimmed.pipe(z.uuid()),
 	application_reference: requiredString,

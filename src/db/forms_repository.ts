@@ -141,24 +141,31 @@ export const findIngestedForm = async (db: Db, applicationReference: string): Pr
 		applicationReference,
 	]);
 	const row = rows[0];
-	return (
-		row && {
-			id: row.id,
-			applicationReference: row.application_reference,
-			sessionId: row.session_id,
-			rawBody: row.raw_body,
-			status: row.status,
-			error: row.error,
-			attempts: row.attempts,
-		}
-	);
+
+	if (!row) {
+		return undefined;
+	}
+
+	return {
+		id: row.id,
+		applicationReference: row.application_reference,
+		sessionId: row.session_id,
+		rawBody: row.raw_body,
+		status: row.status,
+		error: row.error,
+		attempts: row.attempts,
+	};
 };
 
 export const findTransformedForm = async (db: Db, id: string): Promise<TransformedFormSchema | undefined> => {
 	const { rows } = await db.query<TransformedFormRow>(`SELECT * FROM transformed_forms WHERE id = $1`, [id]);
 	const row = rows[0];
-	return (
-		row && {
+
+	if (!row) {
+		return undefined;
+	}
+
+	return {
 			sessionId: row.session_id,
 			applicationReference: row.application_reference,
 			firstName: row.first_name,
@@ -175,8 +182,7 @@ export const findTransformedForm = async (db: Db, id: string): Promise<Transform
 			country: row.country,
 			longitude: row.longitude,
 			latitude: row.latitude,
-		}
-	);
+	};
 };
 
 export const findTransformedNotificationByFormId = async (
@@ -188,16 +194,19 @@ export const findTransformedNotificationByFormId = async (
 		[transformedFormId],
 	);
 	const row = rows[0];
-	return (
-		row && {
-			id: row.id,
-			transformedFormId: row.transformed_form_id,
-			status: row.status,
-			attempts: row.attempts,
-			error: row.error,
-			sentAt: row.sent_at,
-		}
-	);
+
+	if (!row) {
+		return undefined;
+	}
+
+	return {
+		id: row.id,
+		transformedFormId: row.transformed_form_id,
+		status: row.status,
+		attempts: row.attempts,
+		error: row.error,
+		sentAt: row.sent_at,
+	};
 };
 
 export const countForms = async (db: Db): Promise<{ ingested: number; transformed: number }> => {
@@ -231,18 +240,21 @@ export const findTransformedNotification = async (
 		[id],
 	);
 	const row = rows[0];
-	return (
-		row && {
-			id: row.id,
-			transformedFormId: row.transformed_form_id,
-			status: row.status,
-			attempts: row.attempts,
-			error: row.error,
-			sentAt: row.sent_at,
-			applicationReference: row.application_reference,
-			transformedAt: row.transformed_at,
-		}
-	);
+
+	if (!row) {
+		return undefined;
+	}
+
+	return {
+		id: row.id,
+		transformedFormId: row.transformed_form_id,
+		status: row.status,
+		attempts: row.attempts,
+		error: row.error,
+		sentAt: row.sent_at,
+		applicationReference: row.application_reference,
+		transformedAt: row.transformed_at,
+	};
 };
 
 export const markTransformedNotificationSent = async (db: Db, id: string, attempts: number): Promise<void> => {
