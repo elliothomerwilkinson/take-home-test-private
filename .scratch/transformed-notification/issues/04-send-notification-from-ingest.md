@@ -23,3 +23,8 @@ Connect delivery to `/ingest` so the team is emailed after each successful trans
 - [ ] A `sendEmail` that never resolves still gives a 201, which proves delivery isn't awaited.
 - [ ] The test from ticket 02 now expects `sent` instead of `pending`.
 - [ ] Invalid, geocode-failed and duplicate ingests never call `sendEmail`.
+
+## Comments
+
+- Implemented. As agreed before starting, the `ingest()` test helper defaults to a `sendEmail` that never resolves. Tests that don't care about email therefore leave delivery pending, and it never writes to the database after `afterEach` closes it. Notification tests pass their own stub and wait for the row to settle with a local `waitFor`. The `.catch` that logs is deliberately untested glue. The test "records one pending notification" from ticket 02 became "emails the team once and marks the notification sent". The resend test now asserts only that the row exists, because its status races with background delivery.
+- The no-wait test was mutation-checked: making the route `await` delivery causes it to time out.

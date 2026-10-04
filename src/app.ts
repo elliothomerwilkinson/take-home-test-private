@@ -5,13 +5,16 @@ import { claimIngestedForm, markIngestedForm, saveTransformedForm } from "./db/f
 import { ingestedFormSchema } from "./forms/schemas/ingested_schema";
 import { transformForm } from "./forms/transform";
 import { Geocode, geocodePostcode } from "./forms/geocode";
+import { deliverTransformedNotification, SendEmail } from "./notifications/transformed_notification";
 
-export type { Geocode };
+export type { Geocode, SendEmail };
 
 export type AppDeps = {
 	db: Db;
 	geocode: Geocode;
 	geocodeRetryDelayMs?: number;
+	sendEmail: SendEmail;
+	emailRetryDelayMs?: number;
 };
 
 const readString = (body: unknown, key: string): string | undefined => {
@@ -19,7 +22,7 @@ const readString = (body: unknown, key: string): string | undefined => {
 	return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 };
 
-export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200 }: AppDeps) => {
+export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200, sendEmail, emailRetryDelayMs = 200 }: AppDeps) => {
 	const app = express();
 
 	app.use(express.json());
@@ -58,9 +61,18 @@ export const createApp = ({ db, geocode, geocodeRetryDelayMs = 200 }: AppDeps) =
 				return;
 			}
 
-			const { transformedFormId } = await saveTransformedForm(db, ingestedFormId, transformForm(form, geocoded.coords));
+			const { transformedFormId, notificationId } = await saveTransformedForm(
+				db,
+				ingestedFormId,
+				transformForm(form, geocoded.coords),
+			);
 
 			res.status(201).json({ id: transformedFormId });
+
+			// Fire-and-forget: the email never changes the ingest outcome, and its result is recorded on the notification.
+			deliverTransformedNotification(db, sendEmail, notificationId, emailRetryDelayMs).catch((error) =>
+				console.error(`Delivering transformed notification ${notificationId} failed`, error),
+			);
 		} catch (error) {
 			next(error);
 		}

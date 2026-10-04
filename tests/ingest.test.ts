@@ -1,5 +1,5 @@
 import request from "supertest";
-import { createApp, Geocode } from "../src/app";
+import { createApp, Geocode, SendEmail } from "../src/app";
 import { createDb, Db } from "../src/db";
 import {
 	claimIngestedForm,
@@ -19,6 +19,21 @@ const succeedingGeocode: Geocode = async () => ({ statusCode: 200, body: { longi
 
 const failingGeocode: Geocode = async () => ({ statusCode: 500 });
 
+const sentEmail: SendEmail = async () => ({ statusCode: 200 });
+
+/** The default for tests that don't care about email: delivery stays pending and never touches the database again. */
+const neverSentEmail: SendEmail = () => new Promise(() => {});
+
+const waitFor = async <T>(check: () => Promise<T | undefined>, timeoutMs = 2000): Promise<T> => {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const value = await check();
+		if (value !== undefined) return value;
+		if (Date.now() > deadline) throw new Error("waitFor timed out");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+};
+
 const geocodeFailingTimes = (failures: number) => {
 	let calls = 0;
 	return jest.fn<ReturnType<Geocode>, Parameters<Geocode>>(async (postcode) =>
@@ -37,8 +52,17 @@ describe("POST /ingest", () => {
 		await db.close();
 	});
 
-	const ingest = (body: unknown, geocode: Geocode = succeedingGeocode) =>
-		request(createApp({ db, geocode, geocodeRetryDelayMs: 0 })).post("/ingest").send(body as object);
+	const appWith = (geocode: Geocode = succeedingGeocode, sendEmail: SendEmail = neverSentEmail) =>
+		createApp({ db, geocode, geocodeRetryDelayMs: 0, sendEmail, emailRetryDelayMs: 0 });
+
+	const ingest = (body: unknown, geocode?: Geocode, sendEmail?: SendEmail) =>
+		request(appWith(geocode, sendEmail)).post("/ingest").send(body as object);
+
+	const settledNotification = (transformedFormId: string) =>
+		waitFor(async () => {
+			const notification = await findTransformedNotificationByFormId(db, transformedFormId);
+			return notification?.status === "pending" ? undefined : notification;
+		});
 
 	it("stores a valid form as a transformed form and returns its id", async () => {
 		const response = await ingest(personOne);
@@ -71,7 +95,7 @@ describe("POST /ingest", () => {
 	});
 
 	it("rejects a body that is not valid JSON without storing anything", async () => {
-		const response = await request(createApp({ db, geocode: succeedingGeocode, geocodeRetryDelayMs: 0 }))
+		const response = await request(appWith())
 			.post("/ingest")
 			.set("Content-Type", "application/json")
 			.send('{"application_reference": "GRU-1"');
@@ -161,33 +185,70 @@ describe("POST /ingest", () => {
 	});
 
 	describe("transformed notifications", () => {
-		it("records one pending notification for a transformed form", async () => {
-			const response = await ingest(personOne);
+		it("emails the team once and marks the notification sent", async () => {
+			const sendEmail = jest.fn(sentEmail);
+
+			const response = await ingest(personOne, undefined, sendEmail);
 
 			expect(response.status).toBe(201);
-			expect(await findTransformedNotificationByFormId(db, response.body.id)).toMatchObject({
+			expect(await settledNotification(response.body.id)).toMatchObject({
 				transformedFormId: response.body.id,
-				status: "pending",
-				attempts: 0,
+				status: "sent",
+				attempts: 1,
 				error: null,
-				sentAt: null,
+				sentAt: expect.any(Date),
 			});
+			expect(sendEmail).toHaveBeenCalledTimes(1);
+			expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ subject: "Form transformed: GRU-123089-2026" }));
+		});
+
+		it("still transforms the form when every email attempt fails, and marks the notification failed", async () => {
+			const sendEmail = jest.fn<ReturnType<SendEmail>, Parameters<SendEmail>>(async () => ({ statusCode: 500 }));
+
+			const response = await ingest(personOne, undefined, sendEmail);
+
+			expect(response.status).toBe(201);
+			expect(await settledNotification(response.body.id)).toMatchObject({
+				status: "failed",
+				attempts: 3,
+				error: { message: expect.stringContaining("500") },
+			});
+			expect(sendEmail).toHaveBeenCalledTimes(3);
+			expect(await findIngestedForm(db, "GRU-123089-2026")).toMatchObject({ status: "transformed" });
+		});
+
+		it("responds without waiting for the email", async () => {
+			const sendEmail = jest.fn(neverSentEmail);
+
+			const response = await ingest(personOne, undefined, sendEmail);
+
+			expect(response.status).toBe(201);
+			expect(sendEmail).toHaveBeenCalledTimes(1);
+			expect(await findTransformedNotificationByFormId(db, response.body.id)).toMatchObject({ status: "pending" });
 		});
 
 		it.each([
 			["fails validation", { ...personOne, email: "john.doe" }, succeedingGeocode],
 			["fails geocoding", personOne, failingGeocode],
-		])("records no notification for a form that %s", async (_, body, geocode) => {
-			expect((await ingest(body, geocode)).status).toBeGreaterThanOrEqual(400);
+		])("records and sends no notification for a form that %s", async (_, body, geocode) => {
+			const sendEmail = jest.fn(sentEmail);
+
+			expect((await ingest(body, geocode, sendEmail)).status).toBeGreaterThanOrEqual(400);
 
 			expect(await countTransformedNotifications(db)).toBe(0);
+			expect(sendEmail).not.toHaveBeenCalled();
 		});
 
-		it("records no second notification for a duplicate delivery", async () => {
-			expect((await ingest(personOne)).status).toBe(201);
-			expect((await ingest(personOne)).status).toBe(409);
+		it("records and sends no second notification for a duplicate delivery", async () => {
+			const sendEmail = jest.fn(sentEmail);
+			const first = await ingest(personOne, undefined, sendEmail);
+			expect(first.status).toBe(201);
+			await settledNotification(first.body.id);
+
+			expect((await ingest(personOne, undefined, sendEmail)).status).toBe(409);
 
 			expect(await countTransformedNotifications(db)).toBe(1);
+			expect(sendEmail).toHaveBeenCalledTimes(1);
 		});
 
 		it("records one notification when a resend of an invalid form is transformed", async () => {
@@ -197,7 +258,7 @@ describe("POST /ingest", () => {
 
 			expect(response.status).toBe(201);
 			expect(await countTransformedNotifications(db)).toBe(1);
-			expect(await findTransformedNotificationByFormId(db, response.body.id)).toMatchObject({ status: "pending" });
+			expect(await findTransformedNotificationByFormId(db, response.body.id)).toBeDefined();
 		});
 	});
 
@@ -253,7 +314,7 @@ describe("POST /ingest", () => {
 		});
 
 		it("transforms only one of two concurrent deliveries", async () => {
-			const app = createApp({ db, geocode: succeedingGeocode, geocodeRetryDelayMs: 0 });
+			const app = appWith();
 
 			const statuses = await Promise.all([
 				request(app).post("/ingest").send(personOne),
