@@ -1,6 +1,6 @@
 # Spec: Transformed Notification email
 
-Status: ready-for-agent
+Status: done
 
 ## Problem
 
@@ -68,7 +68,7 @@ Invalid, failed (geocoding), duplicate (409) and rejected (400) ingests never cr
 
 - `src/retry.ts`: a generic `retryWithBackoff<T>(attempt: () => Promise<Result<T>>, maxAttempts, retryDelayMs)`. It returns the last result and the number of attempts made. `geocodePostcode` is rewritten to use it, with no change in behaviour.
 - `src/notifications/transformed_notification.ts`:
-  - `buildTransformedNotificationEmail(...)`, a pure function
+  - An internal (not exported) email builder. See the ticket 03 comments.
   - `deliverTransformedNotification(db, sendEmail, notificationId, retryDelayMs)`, which loads the notification and its form, sends the email with retries, and records the outcome
 - `src/db/forms_repository.ts` (or a sibling `notifications_repository.ts`) holds all the SQL. `saveTransformedForm` returns both the transformed form id and the notification id.
 - `createApp` gains `sendEmail: SendEmail` (the type of the provider's `sendEmail`) and `emailRetryDelayMs?: number`, which defaults to 200 and is separate from `geocodeRetryDelayMs`.
@@ -81,9 +81,9 @@ Invalid, failed (geocoding), duplicate (409) and rejected (400) ingests never cr
   - Failing twice then succeeding makes 3 attempts.
   - Always failing makes exactly 3 attempts and returns the last failure.
   - The existing geocode tests must still pass without changes.
-- **Email builder unit tests:** the recipient, sender and subject are correct, and the body contains the reference, the id and the time, but none of the PII fields from the example payloads.
 - **`deliverTransformedNotification` unit tests** (stubbed `sendEmail`, delay 0, awaited):
-  - Success → `sent`, `attempts = 1`, `sent_at` set
+  - Success → `sent`, `attempts = 1`, `sent_at` set, with the right recipient, sender and subject
+  - The body contains the reference, the id and the time, and none of the PII fields from `person_one.json`
   - Failing twice then succeeding → `sent`, `attempts = 3`
   - Always returning 500 → `failed`, `attempts = 3`, error stored
   - A throwing stub is handled the same as a 500
@@ -96,6 +96,6 @@ Invalid, failed (geocoding), duplicate (409) and rejected (400) ingests never cr
 
 ## Acceptance criteria
 
-- [ ] Every scenario in the testing section passes under `npm test`
-- [ ] `npm run build` type-checks cleanly
-- [ ] `CONTEXT.md`, ADR-0004 and the README match the implementation
+- [x] Every scenario in the testing section passes under `npm test`
+- [x] `npm run build` type-checks cleanly
+- [x] `CONTEXT.md`, ADR-0004 and the README match the implementation

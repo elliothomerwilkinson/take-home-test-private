@@ -40,9 +40,9 @@ npm run build && npm start
 ## Design
 
 - [`CONTEXT.md`](CONTEXT.md): domain terms, rules, lossy mappings and known limitations
-- [`docs/adr/`](docs/adr): database choice, why raw forms are stored separately, and the deduplication key
+- [`docs/adr/`](docs/adr): database choice, why raw forms are stored separately, the deduplication key, and how the team email is sent
 - `POST /ingest` responses:
-  - `201 { id }` when the form is transformed
+  - `201 { id }` when the form is transformed. A Transformed Notification to happyforms@bots.com is recorded in the same transaction and sent in the background, with up to 3 attempts. Its outcome (`sent` or `failed`) is stored and never changes the response. See ADR-0004.
   - `400` for invalid JSON, a missing `application_reference`, or a form that fails validation (it is stored as `invalid`)
   - `409` for a duplicate or a form still being processed
   - `503` when geocoding fails after 3 attempts (the form is stored as `failed`, and resending it reprocesses it)

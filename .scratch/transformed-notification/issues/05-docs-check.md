@@ -15,4 +15,8 @@ Make sure the documentation matches what was built.
 
 ## Acceptance
 
-- [ ] Every acceptance criterion in `spec.md` is met.
+- [x] Every acceptance criterion in `spec.md` is met.
+
+## Comments
+
+- `CONTEXT.md` and ADR-0004 already matched the implementation, so they are unchanged. The README's "Design" section now covers the notification and ADR-0004. The spec was updated so the email builder is internal and its content is tested through `deliverTransformedNotification`, as agreed in ticket 03.
